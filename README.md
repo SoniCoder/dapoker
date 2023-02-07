@@ -16,12 +16,12 @@ The environment contains a skeleton for a simple Haskell project, designed as a 
 
 This template contains a basic structure for a simple Haskell project. Add your project code to the empty `*.hs` files:
 
-* `src/Lib.hs`: this module is intended to contain the core business logic of your program - it should consist of pure functions (not IO actions). You can rename this or create additional modules as needed (be sure to adjust the `other-modules` section of `emurgo-project.cabal` to reflect any changes/additions)
+* `src/Lib.hs`: this module is intended to contain the core business logic of your program - it should consist of pure functions (not IO actions). You can rename this or create additional modules as needed (be sure to adjust the `other-modules` section of `dapoker.cabal` to reflect any changes/additions)
 * `src/Types.hs`: use this module to define any custom types and synonyms that you'll use in other modules
 * `src/Actions.hs`: this module should contain helper IO actions that will be used inside the `main` action of `app/Main.hs`. Most of your effectful code should live in this module.
 * `app/Main.hs`: compose a minimal `main` action using helper actions defined in `src/Actions.hs` to run your application (this is what will be used if you )
 
-Add any additional packages you need for your project below `base` in the `build-depends` section of `emurgo-project.cabal`. Follow instructions if you encounter any errors due to a "hidden package": these refer to packages that are part of the standard library but aren't imported into a Haskell project by default. The editor tooling will identify the name of the package you need to add to `build-depends` in such cases.
+Add any additional packages you need for your project below `base` in the `build-depends` section of `dapoker.cabal`. Follow instructions if you encounter any errors due to a "hidden package": these refer to packages that are part of the standard library but aren't imported into a Haskell project by default. The editor tooling will identify the name of the package you need to add to `build-depends` in such cases.
 
 Use `cabal repl` in the terminal and the `:l` command followed by a specific module name (`Lib`, `Types`, `Actions`, etc.) to test your code.
 

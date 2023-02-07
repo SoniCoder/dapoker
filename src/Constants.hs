@@ -1,0 +1,9 @@
+module Constants where
+
+_PLAYER_INIT_TOKENS_ :: Int
+_PLAYER_INIT_TOKENS_ = 100
+
+_SPADE_UNICODE_  = "\x2660"
+_CLUB_UNICODE_   = "\x2663"
+_HEART_UNICODE_  = "\x2665"
+_DIAMOND_UNICODE_ = "\x2666"
