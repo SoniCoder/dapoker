@@ -208,7 +208,6 @@ sortPlayersByWinningHand players comCards =
 
 makeGame :: IO Game
 makeGame = do
-  putStrLn "Welcome to Haskell Poker!"
   putStr "Enter name of Player 1: "
   player1Name <- getLine
   (player1Cards, remDeck) <- drawCardsFromDeck 2 deck
@@ -368,7 +367,7 @@ playGame g = do
                       putStrLn $ "Current player bet: " ++ show (playerBet currentPlayer)
                       putStrLn $ "Current player cards: " ++ show (playerCards currentPlayer)
                       putStrLn $ "Community cards: " ++ show (community_cards game)
-                      putStrLn "Enter your action: "
+                      putStr "Enter your action: "
                       action <- getLine
                       case action of
                         "fold" -> do
@@ -436,17 +435,10 @@ playGame g = do
 
 main :: IO ()
 main = do
-    putStrLn "Welcome to DaPoker!"
-    putStrLn "This version of poker supports only 2 human players"
-    putStrLn "The humans will play their turn one by one on the same machine"
-    putStrLn "The humans will have to enter their names at the beginning"
-    -- TODO: Get the initial constant player tokens from variable instead of hardcoding here
-    putStrLn "Each player will be given 100 ADA tokens to start with"
-    putStrLn "At the beginning of each round, a total of 5 community cards will be dealt"
-    putStrLn "along with 2 cards to each player at random"
-    putStrLn "The game will start with a small blind of 1 ADA and a big blind of 2 ADA"
-    putStrLn "For simplicity the first player will be the small blind and the second player will be the big blind"
-    putStrLn "This means that the game will start with the first player's turn"
-    putStrLn "Each player has the option to fold, call, check, raise or perform allin"
-    putStrLn "In this primitive version, there are no side pots, the winner takes all"
-    playGame makeGame
+  -- Create an ASCII art logo saying - "DaPoker!" and print it
+  logo <- readFile "logo.txt"
+  putStrLn logo
+  -- Read the rules from rules.txt and print them
+  rules <- readFile "rules.txt"
+  putStrLn rules
+  playGame makeGame
