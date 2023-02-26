@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use if" #-}
+{-# HLINT ignore "Use null" #-}
 module Main where
 
 import Actions
@@ -9,6 +10,8 @@ import Constants
 import System.Random
 import Data.Maybe
 import Data.List
+import Data.Ord
+import Control.Applicative (Alternative, empty, (<|>))
 -- import System.Random.Stateful (globalStdGen, uniformM)
 
 deck :: [Card]
@@ -34,13 +37,13 @@ pivotCycle (x:xs) e
   | x == e = x:xs
   | otherwise = pivotCycle xs e
 
-updateListAtIndex :: [a] -> Int -> a -> [a]  
+updateListAtIndex :: [a] -> Int -> a -> [a]
 updateListAtIndex list index newElement = take index list ++ [newElement] ++ drop (index + 1) list
 
 drawCardsFromDeck :: Int -> [Card] -> IO ([Card], [Card])
 drawCardsFromDeck n deck = do
   gen <- newStdGen
-  let indices = take n $ randomRs (0, length deck - 1) gen
+  let indices = take n $ nub $ randomRs (0, length deck - 1) gen
   let cards = map (deck !!) indices
   return (cards, filter (`notElem` cards) deck)
 
@@ -60,150 +63,269 @@ isStraightFlush cards = isStraight cards && isFlush cards
 getHighCard :: [Card] -> Rank
 getHighCard cards = maximum $ map rank cards
 
-compareHandsStraightFlush :: [Card] -> [Card] -> Maybe Ordering
-compareHandsStraightFlush h1 h2
-  | isStraightFlush h1 && isStraightFlush h2 = Just $ compare (getHighCard h1) (getHighCard h2)
-  | isStraightFlush h1 = Just GT
-  | isStraightFlush h2 = Just LT
-  | otherwise = Nothing
+compareHandsStraightFlush :: [Card] -> [Card] -> Maybe HandComparison
+compareHandsStraightFlush h1 h2 =
+  case hcresult h1 h2 of
+    Just x -> Just $ HandComparison h1 StraightFlush x
+    Nothing -> Nothing
+  where
+    hcresult h1 h2
+          | isStraightFlush h1 && isStraightFlush h2 = Just $ compare (getHighCard h1) (getHighCard h2)
+          | isStraightFlush h1 = Just GT
+          | isStraightFlush h2 = Just LT
+          | otherwise = Nothing
 
 isFourOfAKind :: [Card] -> Bool
-isFourOfAKind cards = length (nub ranks) == 2 && (length (filter (== head ranks) ranks) == 4 || length (filter (== head (tail ranks)) ranks) == 4)
+isFourOfAKind cards = areFourDup
   where
     ranks = map rank cards
+    areTwoDup = length (nub ranks) <= 5
+    singleDupRemoved = ranks \\ nub ranks
+    doubleDupRemoved = singleDupRemoved \\ nub singleDupRemoved
+    areFourDup = length (doubleDupRemoved \\ nub doubleDupRemoved) >= 1
 
 getFourOfAKindRank :: [Card] -> Rank
-getFourOfAKindRank cards
-  | length (filter (== head ranks) ranks) == 4 = head ranks
-  | otherwise = head (tail ranks)
+getFourOfAKindRank cards = maximum (doubleDupRemoved \\ nub doubleDupRemoved)
   where
     ranks = map rank cards
+    singleDupRemoved = ranks \\ nub ranks
+    doubleDupRemoved = singleDupRemoved \\ nub singleDupRemoved
 
-compareHandsFourOfAKind :: [Card] -> [Card] -> Maybe Ordering
-compareHandsFourOfAKind h1 h2
-  | isFourOfAKind h1 && isFourOfAKind h2 = Just $ compare (getFourOfAKindRank h1) (getFourOfAKindRank h2)
-  | isFourOfAKind h1 = Just GT
-  | isFourOfAKind h2 = Just LT
-  | otherwise = Nothing
+getBestFourOfAKindComb :: [Card] -> [Card]
+getBestFourOfAKindComb cards =
+  let fourOfAKindRank = getFourOfAKindRank cards
+  in
+  take 5 $ sortBy (flip (\c1 c2 ->
+            case rank c1 == fourOfAKindRank of
+              True -> GT
+              False -> LT
+              )) cards
+
+compareHandsFourOfAKind :: [Card] -> [Card] -> Maybe HandComparison
+compareHandsFourOfAKind h1 h2 =
+  case hcresult h1 h2 of
+      Just x -> Just $ HandComparison bestHand FourOfAKind x
+      Nothing -> Nothing
+    where
+      hcresult h1 h2
+          | isFourOfAKind h1 && isFourOfAKind h2 = Just $ compare (getFourOfAKindRank h1) (getFourOfAKindRank h2)
+          | isFourOfAKind h1 = Just GT
+          | isFourOfAKind h2 = Just LT
+          | otherwise = Nothing
+      bestHand = case hcresult h1 h2 of
+            Just x -> case x of
+              GT -> getBestFourOfAKindComb h1
+              LT -> getBestFourOfAKindComb h2
+              EQ -> getBestFourOfAKindComb h1
+            Nothing -> []
 
 isFullHouse :: [Card] -> Bool
-isFullHouse cards = length (nub ranks) == 2 && (length (filter (== head ranks) ranks) == 3 || length (filter (== head (tail ranks)) ranks) == 3)
+isFullHouse cards =
+  case isThreeOfAKind cards of
+    True -> do 
+      let tripletRemovedRanks = filter (/= getThreeOfAKindRank cards) ranks
+      length (tripletRemovedRanks \\ nub tripletRemovedRanks) >= 1
+    False -> False
   where
     ranks = map rank cards
 
 getThreeOfAKindRank :: [Card] -> Rank
-getThreeOfAKindRank cards
-  | length (filter (== head ranks) ranks) == 3 = head ranks
-  | otherwise = head (tail ranks)
+getThreeOfAKindRank cards = maximum (singleDupRemoved \\ nub singleDupRemoved)
   where
     ranks = map rank cards
+    singleDupRemoved = ranks \\ nub ranks
 
-compareHandsFullHouse :: [Card] -> [Card] -> Maybe Ordering
-compareHandsFullHouse h1 h2
-  | isFullHouse h1 && isFullHouse h2 = Just $ compare (getThreeOfAKindRank h1) (getThreeOfAKindRank h2)
-  | isFullHouse h1 = Just GT
-  | isFullHouse h2 = Just LT
-  | otherwise = Nothing
+compareHandsFullHouse :: [Card] -> [Card] -> Maybe HandComparison
+compareHandsFullHouse h1 h2 =
+  case hcresult h1 h2 of
+    Just x -> Just $ HandComparison h1 FullHouse x
+    Nothing -> Nothing
+  where
+    hcresult h1 h2
+          | isFullHouse h1 && isFullHouse h2 = Just $ compare (getThreeOfAKindRank h1) (getThreeOfAKindRank h2)
+          | isFullHouse h1 = Just GT
+          | isFullHouse h2 = Just LT
+          | otherwise = Nothing
 
-compareHandsFlush :: [Card] -> [Card] -> Maybe Ordering
-compareHandsFlush h1 h2
-  | isFlush h1 && isFlush h2 = Just $ compare (getHighCard h1) (getHighCard h2)
-  | isFlush h1 = Just GT
-  | isFlush h2 = Just LT
-  | otherwise = Nothing
+compareHandsFlush :: [Card] -> [Card] -> Maybe HandComparison
+compareHandsFlush h1 h2 =
+  case hcresult h1 h2 of
+    Just x -> Just $ HandComparison h1 Flush x
+    Nothing -> Nothing
+  where
+    hcresult h1 h2
+          | isFlush h1 && isFlush h2 = Just $ compare (getHighCard h1) (getHighCard h2)
+          | isFlush h1 = Just GT
+          | isFlush h2 = Just LT
+          | otherwise = Nothing
 
-compareHandsStraight :: [Card] -> [Card] -> Maybe Ordering
-compareHandsStraight h1 h2
-  | isStraight h1 && isStraight h2 = Just $ compare (getHighCard h1) (getHighCard h2)
-  | isStraight h1 = Just GT
-  | isStraight h2 = Just LT
-  | otherwise = Nothing
+compareHandsStraight :: [Card] -> [Card] -> Maybe HandComparison
+compareHandsStraight h1 h2 =
+  case hcresult h1 h2 of
+    Just x -> Just $ HandComparison h1 Straight x
+    Nothing -> Nothing
+  where hcresult h1 h2
+          | isStraight h1 && isStraight h2 = Just $ compare (getHighCard h1) (getHighCard h2)
+          | isStraight h1 = Just GT
+          | isStraight h2 = Just LT
+          | otherwise = Nothing
 
 isThreeOfAKind :: [Card] -> Bool
-isThreeOfAKind cards = length (nub ranks) == 3 && (length (filter (== head ranks) ranks) == 3 || length (filter (== head (tail ranks)) ranks) == 3 || length (filter (== head (tail (tail ranks))) ranks) == 3)
+isThreeOfAKind cards = areThreeDup
   where
     ranks = map rank cards
+    areTwoDup = length (nub ranks) <= 5
+    singleDupRemoved = ranks \\ nub ranks
+    areThreeDup = length (singleDupRemoved \\ nub singleDupRemoved) >= 1
 
-compareHandsThreeOfAKind :: [Card] -> [Card] -> Maybe Ordering
-compareHandsThreeOfAKind h1 h2
-  | isThreeOfAKind h1 && isThreeOfAKind h2 = Just $ compare (getThreeOfAKindRank h1) (getThreeOfAKindRank h2)
-  | isThreeOfAKind h1 = Just GT
-  | isThreeOfAKind h2 = Just LT
-  | otherwise = Nothing
+getBestThreeOfAKindComb :: [Card] -> [Card]
+getBestThreeOfAKindComb cards =
+  let threeOfAKindRank = getThreeOfAKindRank cards
+  in
+  take 5 $ sortBy (flip (\c1 c2 ->
+            case rank c1 == threeOfAKindRank of
+              True -> GT
+              False -> LT
+              )) cards
 
+compareHandsThreeOfAKind :: [Card] -> [Card] -> Maybe HandComparison
+compareHandsThreeOfAKind h1 h2 =
+  case hcresult h1 h2 of
+    Just x -> Just $ HandComparison bestHand ThreeOfAKind x
+    Nothing -> Nothing
+  where
+    hcresult h1 h2
+          | isThreeOfAKind h1 && isThreeOfAKind h2 = Just $ compare (getThreeOfAKindRank h1) (getThreeOfAKindRank h2)
+          | isThreeOfAKind h1 = Just GT
+          | isThreeOfAKind h2 = Just LT
+          | otherwise = Nothing
+    bestHand = case hcresult h1 h2 of
+            Just x -> case x of
+              GT -> getBestThreeOfAKindComb h1
+              LT -> getBestThreeOfAKindComb h2
+              EQ -> getBestThreeOfAKindComb h1
+            Nothing -> []
+-- The list of Cards in input will have usually seven elements
 isTwoPair :: [Card] -> Bool
-isTwoPair cards = length (nub ranks) == 3 && (length (filter (== head ranks) ranks) == 2 || length (filter (== head (tail ranks)) ranks) == 2 || length (filter (== head (tail (tail ranks))) ranks) == 2)
+isTwoPair cards = length (nub ranks) <= 5
   where
     ranks = map rank cards
 
+-- In case of tie, higher rank pair ones then the second pair ones then the side card
+-- To keep things simple let's just return the rank of the first pair
 getTwoPairRank :: [Card] -> Rank
-getTwoPairRank cards
-  | length (filter (== head ranks) ranks) == 2 = head ranks
-  | length (filter (== head (tail ranks)) ranks) == 2 = head (tail ranks)
-  | otherwise = head (tail (tail ranks))
+getTwoPairRank cards = maximum $ ranks \\ nub ranks
   where
     ranks = map rank cards
 
-compareHandsTwoPair :: [Card] -> [Card] -> Maybe Ordering
-compareHandsTwoPair h1 h2
-  | isTwoPair h1 && isTwoPair h2 = Just $ compare (getTwoPairRank h1) (getTwoPairRank h2)
-  | isTwoPair h1 = Just GT
-  | isTwoPair h2 = Just LT
-  | otherwise = Nothing
+getBestTwoPairCombination :: [Card] -> [Card]
+getBestTwoPairCombination cards =
+  let twoPairRank = getTwoPairRank cards
+  in
+  take 5 $ sortBy (flip (\c1 c2 ->
+            case rank c1 == twoPairRank of
+              True -> GT
+              False -> LT
+              )) cards
+
+compareHandsTwoPair :: [Card] -> [Card] -> Maybe HandComparison
+compareHandsTwoPair h1 h2 =
+  case hcresult h1 h2 of
+    Just x -> Just $ HandComparison bestHand TwoPair x
+    Nothing -> Nothing
+  where
+    hcresult h1 h2
+      | isTwoPair h1 && isTwoPair h2 = Just $ compare (getTwoPairRank h1) (getTwoPairRank h2)
+      | isTwoPair h1 = Just GT
+      | isTwoPair h2 = Just LT
+      | otherwise = Nothing
+    bestHand = case hcresult h1 h2 of
+      Just x -> case x of
+        GT -> getBestTwoPairCombination h1
+        LT -> getBestTwoPairCombination h2
+        EQ -> getBestTwoPairCombination h1
+      Nothing -> []
 
 isPair :: [Card] -> Bool
-isPair cards = length (nub ranks) == 4 && (length (filter (== head ranks) ranks) == 2 || length (filter (== head (tail ranks)) ranks) == 2 || length (filter (== head (tail (tail ranks))) ranks) == 2 || length (filter (== head (tail (tail (tail ranks)))) ranks) == 2)
+isPair cards = length (nub ranks) <= 6
   where
     ranks = map rank cards
 
 getPairRank :: [Card] -> Rank
-getPairRank cards
-  | length (filter (== head ranks) ranks) == 2 = head ranks
-  | length (filter (== head (tail ranks)) ranks) == 2 = head (tail ranks)
-  | length (filter (== head (tail (tail ranks))) ranks) == 2 = head (tail (tail ranks))
-  | otherwise = head (tail (tail (tail ranks)))
+getPairRank cards = maximum $ ranks \\ nub ranks
   where
     ranks = map rank cards
 
-compareHandsPair :: [Card] -> [Card] -> Maybe Ordering
-compareHandsPair h1 h2
-  | isPair h1 && isPair h2 = Just $ compare (getPairRank h1) (getPairRank h2)
-  | isPair h1 = Just GT
-  | isPair h2 = Just LT
-  | otherwise = Nothing
+getBestPairCombination :: [Card] -> [Card]
+getBestPairCombination cards =
+  let pairRank = getPairRank cards
+  in
+  take 5 $ sortBy (flip (\c1 c2 ->
+            case rank c1 == pairRank of
+              True -> GT
+              False -> LT
+              )) cards
 
-compareHands :: [Card] -> [Card] -> Ordering
+compareHandsPair :: [Card] -> [Card] -> Maybe HandComparison
+compareHandsPair h1 h2 =
+    case hcresult h1 h2 of
+      Just x -> Just $ HandComparison {
+        winningHand = bestHand,
+        winningCondition = OnePair,
+        handComparisonResult = x
+      }
+      Nothing -> Nothing
+    where hcresult h1 h2
+            | isPair h1 && isPair h2 = Just $ compare (getPairRank h1) (getPairRank h2)
+            | isPair h1 = Just GT
+            | isPair h2 = Just LT
+            | otherwise = Nothing
+          bestHand = case hcresult h1 h2 of
+            Just x -> case x of
+              GT -> getBestPairCombination h1
+              LT -> getBestPairCombination h2
+              EQ -> getBestPairCombination h1
+            Nothing -> []
+
+compareHighCard :: [Card] -> [Card] -> Maybe HandComparison
+compareHighCard h1 h2 =
+  let hcResult = compare (getHighCard h1) (getHighCard h2)
+  in
+    Just $ HandComparison {
+      handComparisonResult = hcResult,
+      winningCondition = HighCard,
+      winningHand = bestHand
+    } where bestHand = case hcResult of
+                        GT -> bestCombinationh1
+                        LT -> bestCombinationh2
+                        EQ -> bestCombinationh1
+                      where hcResult = compare (getHighCard h1) (getHighCard h2)
+                            bestCombinationh1 = take 5 $ reverse $ sort h1
+                            bestCombinationh2 = take 5 $ reverse $ sort h2
+    -- TODO! correct the winningHand above
+
+compareHands :: [Card] -> [Card] -> Maybe HandComparison
 compareHands h1 h2 =
-  case compareHandsStraightFlush h1 h2 of
-    Just x -> x
-    Nothing ->
-      case compareHandsFourOfAKind h1 h2 of
-        Just x -> x
-        Nothing ->
-          case compareHandsFullHouse h1 h2 of
-            Just x -> x
-            Nothing ->
-              case compareHandsFlush h1 h2 of
-                Just x -> x
-                Nothing ->
-                  case compareHandsStraight h1 h2 of
-                    Just x -> x
-                    Nothing ->
-                      case compareHandsThreeOfAKind h1 h2 of
-                        Just x -> x
-                        Nothing ->
-                          case compareHandsTwoPair h1 h2 of
-                            Just x -> x
-                            Nothing ->
-                              case compareHandsPair h1 h2 of
-                                Just x -> x
-                                Nothing -> compare (getHighCard h1) (getHighCard h2)
-      
-  
+  compareHandsStraightFlush h1 h2 <|>
+  compareHandsFourOfAKind h1 h2 <|>
+  compareHandsFullHouse h1 h2 <|>
+  compareHandsFlush h1 h2 <|>
+  compareHandsStraight h1 h2 <|>
+  compareHandsThreeOfAKind h1 h2 <|>
+  compareHandsTwoPair h1 h2 <|>
+  compareHandsPair h1 h2 <|>
+  compareHighCard h1 h2
+
+sortPlayerFunc :: [Card] -> Player -> Player -> Ordering
+sortPlayerFunc comCards p1 p2 =
+  maybe
+  EQ handComparisonResult
+  (compareHands
+     (playerCards p1 ++ comCards) (playerCards p2 ++ comCards))
 
 sortPlayersByWinningHand :: [Player] -> [Card] -> [Player]
 sortPlayersByWinningHand players comCards =
-  sortBy (\p1 p2 -> compareHands (playerCards p1 ++ comCards) (playerCards p2 ++ comCards)) players
+  sortBy (sortPlayerFunc comCards) players
 
 
 makeGame :: IO Game
@@ -305,9 +427,10 @@ playGame g = do
               -- For that set roundPlayed to False for all players
               -- Along with that, reveal community cards as required
               let updatedPlayerList = map (\player -> player {roundPlayed = False, playerBet = 0}) (players game)
+              let comCards = community_cards game
               let updatedGame = case gameStagesLeft game of
                     PreFlop : _ -> game {
-                      community_cards = updateFirstN 3 (\card -> card {visible = True}) (community_cards game),
+                      community_cards = updateFirstN 3 (\card -> card {visible = True}) comCards,
                       gameStagesLeft = tail $ gameStagesLeft game
                     }
                     Flop : _ -> game {
@@ -328,9 +451,20 @@ playGame g = do
                 True -> do
                   -- the game is over
                   -- TODO: print the winner(s) and distribute the pot
-                  let winningPlayer = head $ sortPlayersByWinningHand updatedPlayerList (community_cards updatedGame)
-                  putStrLn "Game Over! Winning Player:"
-                  print winningPlayer
+                  let sortedPlayers = sortPlayersByWinningHand updatedPlayerList (community_cards updatedGame)
+                  let winningPlayer = head sortedPlayers
+                  putStr "Game Over! Winning Player: "
+                  putStr $ show winningPlayer
+                  let hcResult = compareHands (playerCards (head sortedPlayers) ++ comCards) (playerCards (sortedPlayers !! 1) ++ comCards)
+                  let defaulthcResult = HandComparison {
+                    winningHand = [],
+                    winningCondition = Tie,
+                    handComparisonResult = EQ
+                  }
+                  putStr "Winning Hand: "
+                  print (winningHand $ fromMaybe defaulthcResult hcResult)
+                  putStr "Winning Condition: "
+                  print (winningCondition $ fromMaybe defaulthcResult hcResult)
                   putStrLn "Enter any character to continue with the next game"
                   _ <- getChar
                   playGame makeGame
@@ -367,7 +501,7 @@ playGame g = do
                       putStrLn $ "Current player bet: " ++ show (playerBet currentPlayer)
                       putStrLn $ "Current player cards: " ++ show (playerCards currentPlayer)
                       putStrLn $ "Community cards: " ++ show (community_cards game)
-                      putStr "Enter your action: "
+                      putStr "Enter your action (default call): "
                       action <- getLine
                       case action of
                         "fold" -> do
@@ -382,7 +516,7 @@ playGame g = do
                             players = updatedPlayerList,
                             currentPlayerCycle = Just (tail playerCycle)
                           }
-                        "call" -> do
+                        action | action == "call" || action == "" -> do
                           -- the player has called
                           -- update the player's bet and tokens
                           -- update the pot
