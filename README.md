@@ -1,9 +1,5 @@
 # EMURGO Academy Haskell Course: Solo Project
 
-This repository contains a preconfigured Haskell development environment, allowing you to start coding in Haskell with zero installation using [Gitpod](https://www.gitpod.io/) and a browser-based version of VS Code.
-
-The environment contains a skeleton for a simple Haskell project, designed as a starter for the solo project of EMURGO Academy's Haskell course.
-
 ## Create Your Environment
 
 1. Fork this repository
@@ -28,3 +24,18 @@ Use `cabal repl` in the terminal and the `:l` command followed by a specific mod
 Use `cabal run` to run your completed program.
 
 As you complete the assignments, stage, commit and push your changes to Github using the `Source Control` tab in the left panel.
+
+## DaPoker Rules
+
+Welcome to DaPoker!
+This version of poker supports only 2 human players
+The humans will play their turn one by one on the same machine
+The humans will have to enter their names at the beginning
+Each player will be given 100 ADA tokens to start with
+At the beginning of each round, a total of 5 community cards will be dealt
+along with 2 cards to each player at random
+The game will start with a small blind of 1 ADA and a big blind of 2 ADA
+For simplicity the first player will be the small blind and the second player will be the big blind
+This means that the game will start with the first player's turn
+Each player has the option to fold, call, check, raise or perform allin
+In this primitive version, there are no side pots, the winner takes all
